@@ -48,14 +48,14 @@ void cuda_degamma(uint8_t *pSrc, uint8_t *pDst) {
 }
 
 __global__
-void cuda_blur(uint8_t* pSrc, uint8_t* pDst) {
+void cuda_blur(uint8_t* pSrc, uint8_t* pDst, uint16_t kernelSize) {
   size_t row = blockIdx.x * blockDim.x + threadIdx.x;
   size_t col = blockIdx.y * blockDim.y + threadIdx.y;
-
   pixel currentPixel;
+  uint16_t numPixelsKernel = kernelSize * kernelSize;
 
-  bool borderPixel = (row < KERNEL_SIZE/2       || col < KERNEL_SIZE/2 ||
-                      row > 511 - KERNEL_SIZE/2 || col > 511 - KERNEL_SIZE/2);
+  bool borderPixel = (row < kernelSize/2       || col < kernelSize/2 ||
+                      row > 511 - kernelSize/2 || col > 511 - kernelSize/2);
 
   size_t startPos  = (row * COLORS_PER_PIXEL * 512) + (col * COLORS_PER_PIXEL);
   size_t rowStride = COLORS_PER_PIXEL * 512;
@@ -68,8 +68,8 @@ void cuda_blur(uint8_t* pSrc, uint8_t* pDst) {
     // populate NxN kernel, center pixel is middle of array
     // data organized in memory from bottom left, left to right, bottom to top
     // each pixel is 3 bytes, incrementing memory order: [0] = b, [1] = g, [2] = r
-    for (int32_t i = -(KERNEL_SIZE/2); i<=KERNEL_SIZE/2; i++) {
-      for (int32_t y = -(KERNEL_SIZE/2); y<=KERNEL_SIZE/2; y++) {
+    for (int32_t i = -(kernelSize/2); i<=kernelSize/2; i++) {
+      for (int32_t y = -(kernelSize/2); y<=kernelSize/2; y++) {
         currentPixel.b = pSrc[startPos   + i*rowStride + y*COLORS_PER_PIXEL];
         currentPixel.g = pSrc[startPos+1 + i*rowStride + y*COLORS_PER_PIXEL];
         currentPixel.r = pSrc[startPos+2 + i*rowStride + y*COLORS_PER_PIXEL];
@@ -80,9 +80,9 @@ void cuda_blur(uint8_t* pSrc, uint8_t* pDst) {
       }
     }
 
-    rAvg = rSum/(KERNEL_SIZE * KERNEL_SIZE);
-    gAvg = gSum/(KERNEL_SIZE * KERNEL_SIZE);
-    bAvg = bSum/(KERNEL_SIZE * KERNEL_SIZE);
+    rAvg = rSum/numPixelsKernel;
+    gAvg = gSum/numPixelsKernel;
+    bAvg = bSum/numPixelsKernel;
 
     currentPixel.r = uint8_t(max(min(rAvg, 255.0f), 0.0f));
     currentPixel.g = uint8_t(max(min(gAvg, 255.0f), 0.0f));
@@ -100,7 +100,7 @@ void cuda_blur(uint8_t* pSrc, uint8_t* pDst) {
 }
 
 
-int main() {
+int main(int argc, char *argv[]) {
   char imageFilename[] = "lenna.bmp";
   uint8_t *pDevSrcImage = nullptr;
   uint8_t *pDevDstImage = nullptr;
@@ -108,10 +108,16 @@ int main() {
   uint8_t *pDevDeGammaDstImage = nullptr;      
   uint8_t *pHostDstImage = nullptr;
   vector<tuple<uint8_t, uint8_t, uint8_t>> pixel;
+  uint16_t kernelSize = 5;
 
   // bring in bitmap
   Bitmap bitmap_h(imageFilename);
   bitmap_h.printBitmapInfo();
+
+  if (argv[1] != nullptr) {
+    kernelSize = stoi(argv[1]);
+  }
+  printf("running with kernel size %d\n", kernelSize); 
 
   size_t pMemSize;
   cudaDeviceGetLimit(&pMemSize, cudaLimitStackSize);
@@ -130,7 +136,7 @@ int main() {
   // call kernel
   dim3 blockSize = dim3(512,512,1);
   cuda_degamma<<<blockSize, 1>>>(pDevSrcImage, pDevGammaDstImage);  
-  cuda_blur<<<blockSize, 1>>>(pDevGammaDstImage, pDevDeGammaDstImage);
+  cuda_blur<<<blockSize, 1>>>(pDevGammaDstImage, pDevDeGammaDstImage, kernelSize);
   cuda_gamma<<<blockSize, 1>>>(pDevDeGammaDstImage, pDevDstImage);
   cudaDeviceSynchronize();
 
