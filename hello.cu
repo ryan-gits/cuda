@@ -3,6 +3,7 @@
 #include <fstream>
 #include "bitmap.h"
 
+
 #define COLORS_PER_PIXEL 3
 #define DEBUG 0
 
@@ -15,11 +16,11 @@ struct pixel {
 };
 
 __global__
-void cuda_gamma(uint8_t *pSrc, uint8_t *pDst) {
+void cuda_gamma(uint8_t *pSrc, uint8_t *pDst, size_t imageSize) {
   size_t row = blockIdx.x * blockDim.x + threadIdx.x;
   size_t col = blockIdx.y * blockDim.y + threadIdx.y;
 
-  size_t currentPixel = (row * COLORS_PER_PIXEL * 512) + (col * COLORS_PER_PIXEL);
+  size_t currentPixel = (row * COLORS_PER_PIXEL * imageSize) + (col * COLORS_PER_PIXEL);
 
   pDst[currentPixel]   = uint8_t(255.0f * pow(float(pSrc[currentPixel])/255.0f,   (1.0f/2.2f)));
   pDst[currentPixel+1] = uint8_t(255.0f * pow(float(pSrc[currentPixel+1])/255.0f, (1.0f/2.2f)));
@@ -27,11 +28,11 @@ void cuda_gamma(uint8_t *pSrc, uint8_t *pDst) {
 }
 
 __global__
-void cuda_degamma(uint8_t *pSrc, uint8_t *pDst) {
+void cuda_degamma(uint8_t *pSrc, uint8_t *pDst, size_t imageSize) {
   size_t row = blockIdx.x * blockDim.x + threadIdx.x;
   size_t col = blockIdx.y * blockDim.y + threadIdx.y;
 
-  size_t currentPixel = (row * COLORS_PER_PIXEL * 512) + (col * COLORS_PER_PIXEL);
+  size_t currentPixel = (row * COLORS_PER_PIXEL * imageSize) + (col * COLORS_PER_PIXEL);
 
   pDst[currentPixel]   = uint8_t(255.0f * pow(float(pSrc[currentPixel])/255.0f,   2.2f));
   pDst[currentPixel+1] = uint8_t(255.0f * pow(float(pSrc[currentPixel+1])/255.0f, 2.2f));
@@ -39,57 +40,66 @@ void cuda_degamma(uint8_t *pSrc, uint8_t *pDst) {
 }
 
 __global__
-void cuda_blur(uint8_t* pSrc, uint8_t* pDst, uint16_t kernelSize) {
+void cuda_blur(uint8_t* pSrc, uint8_t* pDst, uint16_t kernelSize, size_t imageSize) {
   size_t row = blockIdx.x * blockDim.x + threadIdx.x;
   size_t col = blockIdx.y * blockDim.y + threadIdx.y;
 
   size_t numPixelsKernel = kernelSize * kernelSize;
-  size_t startPos        = (row * COLORS_PER_PIXEL * 512) + (col * COLORS_PER_PIXEL);
-  size_t rowStride       = COLORS_PER_PIXEL * 512;
+  size_t startPos        = (row * COLORS_PER_PIXEL * imageSize) + (col * COLORS_PER_PIXEL);
+  size_t rowStride       = COLORS_PER_PIXEL * imageSize;
 
   pixel currentPixel;
 
-  bool borderPixel = (row < kernelSize/2       || col < kernelSize/2 ||
-                      row > 511 - kernelSize/2 || col > 511 - kernelSize/2);
+  float rSum = 0.0f, gSum = 0.0f, bSum = 0.0f;
+  float rAvg = 0.0f, gAvg = 0.0f, bAvg = 0.0f;
 
-  // ignore borders for now
-  if (!borderPixel) {
-    float rSum = 0.0f, gSum = 0.0f, bSum = 0.0f;
-    float rAvg = 0.0f, gAvg = 0.0f, bAvg = 0.0f;
+  int16_t rowMirrorOffset = 0;
+  int16_t colMirrorOffset = 0;
 
-    // data organized in memory from bottom left, left to right, bottom to top
-    // each pixel is 3 bytes, incrementing memory order: [0] = b, [1] = g, [2] = r
-    for (int32_t i = -(kernelSize/2); i<=kernelSize/2; i++) {
-      for (int32_t y = -(kernelSize/2); y<=kernelSize/2; y++) {
-        currentPixel.b = pSrc[startPos   + i*rowStride + y*COLORS_PER_PIXEL];
-        currentPixel.g = pSrc[startPos+1 + i*rowStride + y*COLORS_PER_PIXEL];
-        currentPixel.r = pSrc[startPos+2 + i*rowStride + y*COLORS_PER_PIXEL];
-
-        rSum += currentPixel.r;
-        gSum += currentPixel.g;
-        bSum += currentPixel.b;
-      }
+  // data organized in memory from bottom left, left to right, bottom to top
+  // each pixel is 3 bytes, incrementing memory order: [0] = b, [1] = g, [2] = r
+  for (int32_t i = -(kernelSize/2); i<=kernelSize/2; i++) {
+    // mirror about x axis for row border pixels
+    // top row offset
+    if (int(row) + i > imageSize-1) {
+      rowMirrorOffset = -i - (row + i - imageSize + 1);
+    // bottom row offset
+    } else if (int(row) + i < 0) {
+      rowMirrorOffset = -i + abs(int(row) + i) - 1;
+    } else {
+      rowMirrorOffset = 0;
     }
 
-    rAvg = rSum/numPixelsKernel;
-    gAvg = gSum/numPixelsKernel;
-    bAvg = bSum/numPixelsKernel;
+    for (int32_t y = -(kernelSize/2); y<=kernelSize/2; y++) {
+      // mirror about y axis for column border pixels
+      // right column offset
+      if (int(col) + y > imageSize-1) {
+        colMirrorOffset = -y - (col + y - imageSize + 1);
+      // left column offset
+      } else if (int(col) + y < 0) {
+        colMirrorOffset = -y + abs(int(col) + y) - 1;
+      } else {
+        colMirrorOffset = 0;
+      }
 
-    currentPixel.r = uint8_t(max(min(rAvg, 255.0f), 0.0f));
-    currentPixel.g = uint8_t(max(min(gAvg, 255.0f), 0.0f));
-    currentPixel.b = uint8_t(max(min(bAvg, 255.0f), 0.0f));
-  } else {
-    currentPixel.b = pSrc[startPos];
-    currentPixel.g = pSrc[startPos+1];
-    currentPixel.r = pSrc[startPos+2];
+      currentPixel.b = pSrc[startPos   + (i+rowMirrorOffset)*rowStride + (y+colMirrorOffset)*COLORS_PER_PIXEL];
+      currentPixel.g = pSrc[startPos+1 + (i+rowMirrorOffset)*rowStride + (y+colMirrorOffset)*COLORS_PER_PIXEL];
+      currentPixel.r = pSrc[startPos+2 + (i+rowMirrorOffset)*rowStride + (y+colMirrorOffset)*COLORS_PER_PIXEL];
+
+      rSum += currentPixel.r;
+      gSum += currentPixel.g;
+      bSum += currentPixel.b;
+    }
   }
 
-  // populate destination buffer
-  pDst[startPos]   = currentPixel.b;
-  pDst[startPos+1] = currentPixel.g;
-  pDst[startPos+2] = currentPixel.r;
-}
+  rAvg = rSum/numPixelsKernel;
+  gAvg = gSum/numPixelsKernel;
+  bAvg = bSum/numPixelsKernel;
 
+  pDst[startPos]   = uint8_t(max(min(bAvg, 255.0f), 0.0f));
+  pDst[startPos+1] = uint8_t(max(min(gAvg, 255.0f), 0.0f));  
+  pDst[startPos+2] = uint8_t(max(min(rAvg, 255.0f), 0.0f));
+}
 
 int main(int argc, char *argv[]) {
   char *imageFilename;
@@ -132,10 +142,10 @@ int main(int argc, char *argv[]) {
   cudaMalloc((void **)&pDevDeGammaDstImage, bitmap_h.getImageSize() * sizeof(pDevDeGammaDstImage));
 
   // call kernels
-  dim3 blockSize = dim3(512,512,1);
-  cuda_degamma<<<blockSize, 1>>>(pDevSrcImage, pDevGammaDstImage);
-  cuda_blur<<<blockSize, 1>>>(pDevGammaDstImage, pDevDeGammaDstImage, kernelSize);
-  cuda_gamma<<<blockSize, 1>>>(pDevDeGammaDstImage, pDevDstImage);
+  dim3 blockSize = dim3(bitmap_h.getRows(),bitmap_h.getCols(),1);
+  cuda_degamma<<<blockSize, 1>>>(pDevSrcImage, pDevGammaDstImage, bitmap_h.getRows());
+  cuda_blur<<<blockSize, 1>>>(pDevGammaDstImage, pDevDeGammaDstImage, kernelSize, bitmap_h.getRows());
+  cuda_gamma<<<blockSize, 1>>>(pDevDeGammaDstImage, pDevDstImage, bitmap_h.getRows());
   cudaDeviceSynchronize();
 
   // create host buffer for bmp, copy device contents back to host
