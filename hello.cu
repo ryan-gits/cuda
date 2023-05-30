@@ -16,7 +16,7 @@ struct pixel {
 };
 
 __global__
-void cuda_gamma(uint8_t *pSrc, uint8_t *pDst, size_t imageSize) {
+void cuda_gamma(uint8_t *pSrc, uint8_t *pDst, uint16_t imageSize) {
   size_t row = blockIdx.x * blockDim.x + threadIdx.x;
   size_t col = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -28,7 +28,7 @@ void cuda_gamma(uint8_t *pSrc, uint8_t *pDst, size_t imageSize) {
 }
 
 __global__
-void cuda_degamma(uint8_t *pSrc, uint8_t *pDst, size_t imageSize) {
+void cuda_degamma(uint8_t *pSrc, uint8_t *pDst, uint16_t imageSize) {
   size_t row = blockIdx.x * blockDim.x + threadIdx.x;
   size_t col = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -40,13 +40,14 @@ void cuda_degamma(uint8_t *pSrc, uint8_t *pDst, size_t imageSize) {
 }
 
 __global__
-void cuda_blur(uint8_t* pSrc, uint8_t* pDst, uint16_t kernelSize, size_t imageSize) {
-  size_t row = blockIdx.x * blockDim.x + threadIdx.x;
-  size_t col = blockIdx.y * blockDim.y + threadIdx.y;
+void cuda_blur(uint8_t* pSrc, uint8_t* pDst, uint16_t kernelSize, int32_t imageSize) {
+  int32_t row = blockIdx.x * blockDim.x + threadIdx.x;
+  int32_t col = blockIdx.y * blockDim.y + threadIdx.y;
 
-  size_t numPixelsKernel = kernelSize * kernelSize;
-  size_t startPos        = (row * COLORS_PER_PIXEL * imageSize) + (col * COLORS_PER_PIXEL);
-  size_t rowStride       = COLORS_PER_PIXEL * imageSize;
+  int32_t numPixelsKernel = kernelSize * kernelSize;
+  int32_t rowStride       = COLORS_PER_PIXEL * imageSize;
+  int32_t colStride       = COLORS_PER_PIXEL;
+  int32_t startPos        = (row * rowStride) + (col * colStride);
 
   pixel currentPixel;
 
@@ -60,31 +61,31 @@ void cuda_blur(uint8_t* pSrc, uint8_t* pDst, uint16_t kernelSize, size_t imageSi
   // each pixel is 3 bytes, incrementing memory order: [0] = b, [1] = g, [2] = r
   for (int32_t i = -(kernelSize/2); i<=kernelSize/2; i++) {
     // mirror about x axis for row border pixels
-    // top row offset
-    if (int(row) + i > imageSize-1) {
+    // top row mirror pixels
+    if (row + i > imageSize-1) {
       rowMirrorOffset = -i - (row + i - imageSize + 1);
-    // bottom row offset
-    } else if (int(row) + i < 0) {
-      rowMirrorOffset = -i + abs(int(row) + i) - 1;
+    // bottom row mirror pixels
+    } else if (row + i < 0) {
+      rowMirrorOffset = -i - row + abs(row + i) ;
     } else {
       rowMirrorOffset = 0;
     }
 
     for (int32_t y = -(kernelSize/2); y<=kernelSize/2; y++) {
       // mirror about y axis for column border pixels
-      // right column offset
-      if (int(col) + y > imageSize-1) {
+      // right column mirror pixels
+      if (col + y > imageSize-1) {
         colMirrorOffset = -y - (col + y - imageSize + 1);
-      // left column offset
-      } else if (int(col) + y < 0) {
-        colMirrorOffset = -y + abs(int(col) + y) - 1;
+      // left column mirror pixels
+      } else if (col + y < 0) {
+        colMirrorOffset = -y + abs(col + y) - 1;
       } else {
         colMirrorOffset = 0;
       }
 
-      currentPixel.b = pSrc[startPos   + (i+rowMirrorOffset)*rowStride + (y+colMirrorOffset)*COLORS_PER_PIXEL];
-      currentPixel.g = pSrc[startPos+1 + (i+rowMirrorOffset)*rowStride + (y+colMirrorOffset)*COLORS_PER_PIXEL];
-      currentPixel.r = pSrc[startPos+2 + (i+rowMirrorOffset)*rowStride + (y+colMirrorOffset)*COLORS_PER_PIXEL];
+      currentPixel.b = pSrc[startPos   + (i+rowMirrorOffset)*rowStride + (y+colMirrorOffset)*colStride];
+      currentPixel.g = pSrc[startPos+1 + (i+rowMirrorOffset)*rowStride + (y+colMirrorOffset)*colStride];
+      currentPixel.r = pSrc[startPos+2 + (i+rowMirrorOffset)*rowStride + (y+colMirrorOffset)*colStride];
 
       rSum += currentPixel.r;
       gSum += currentPixel.g;
@@ -97,7 +98,7 @@ void cuda_blur(uint8_t* pSrc, uint8_t* pDst, uint16_t kernelSize, size_t imageSi
   bAvg = bSum/numPixelsKernel;
 
   pDst[startPos]   = uint8_t(max(min(bAvg, 255.0f), 0.0f));
-  pDst[startPos+1] = uint8_t(max(min(gAvg, 255.0f), 0.0f));  
+  pDst[startPos+1] = uint8_t(max(min(gAvg, 255.0f), 0.0f));
   pDst[startPos+2] = uint8_t(max(min(rAvg, 255.0f), 0.0f));
 }
 
@@ -108,7 +109,7 @@ int main(int argc, char *argv[]) {
   uint8_t *pDevGammaDstImage = nullptr;
   uint8_t *pDevDeGammaDstImage = nullptr;
   uint8_t *pHostDstImage = nullptr;
-  uint16_t kernelSize = 5;
+  int16_t kernelSize = 5;
 
   assert(argc > 1);
 
