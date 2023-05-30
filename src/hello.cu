@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
 
   // create output bmp and write out processed image
   std::ofstream outputFile;
-  outputFile.open("lenna_processed.bmp");
+  outputFile.open("./resources/lenna_processed.bmp");
   // write bitmap header, image
   outputFile.write(bitmap_h.getImageBuffer(), bitmap_h.getHeaderSize());
   outputFile.write((char *)pHostDstImage, bitmap_h.getImageSize());

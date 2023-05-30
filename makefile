@@ -1,8 +1,12 @@
 all:
-	nvcc hello.cu -std=c++17 --expt-relaxed-constexpr
+	mkdir build
+	nvcc ./src/hello.cu -std=c++17 --expt-relaxed-constexpr -I ./src -o ./build/hello
 
 run:
-	./a.out lenna.bmp 13
+	./build/hello ./resources/lenna.bmp 13
 
 prof:
-	nvprof ./a.out lenna.bmp 13
+	nvprof ./build/hello ./resources/lenna.bmp 13
+
+clean:
+	rm -rf ./build
