@@ -1,5 +1,5 @@
-#ifndef ISP_HPP
-#define ISP_HPP
+#ifndef ISP_H_
+#define ISP_H_
 
 #define COLORS_PER_PIXEL 3
 

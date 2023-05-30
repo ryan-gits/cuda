@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <cstdint>
 #include <fstream>
-#include "bitmap.hpp"
+#include "bitmap.h"
 #include "gamma.cu"
 #include "degamma.cu"
-#include "box_blur.cu"
+#include "boxblur.cu"
 
 #define DEBUG 0
 
@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
   // call kernels
   dim3 blockSize = dim3(bitmap_h.getRows(),bitmap_h.getCols(),1);
   degamma<<<blockSize, 1>>>(pDevSrcImage, pDevGammaDstImage, bitmap_h.getRows());
-  box_blur<<<blockSize, 1>>>(pDevGammaDstImage, pDevDeGammaDstImage, kernelSize, bitmap_h.getRows());
+  boxBlur<<<blockSize, 1>>>(pDevGammaDstImage, pDevDeGammaDstImage, kernelSize, bitmap_h.getRows());
   gamma<<<blockSize, 1>>>(pDevDeGammaDstImage, pDevDstImage, bitmap_h.getRows());
   cudaDeviceSynchronize();
 

@@ -1,7 +1,7 @@
-#include "isp.hpp"
+#include "isp.h"
 
 __global__
-void box_blur(uint8_t* pSrc, uint8_t* pDst, uint16_t kernelSize, int32_t imageSize) {
+void boxBlur(uint8_t* pSrc, uint8_t* pDst, uint16_t kernelSize, int32_t imageSize) {
   int32_t row = blockIdx.x * blockDim.x + threadIdx.x;
   int32_t col = blockIdx.y * blockDim.y + threadIdx.y;
 

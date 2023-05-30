@@ -3,6 +3,9 @@
 // pixels start from bottom left corner image, left to right, bottom to top
 // pixel color order: BGR in incrementing memory
 
+#ifndef BITMAP_H_
+#define BITMAP_H_
+
 #include <stdio.h>
 #include <tuple>
 #include <cstdint>
@@ -142,3 +145,5 @@ class Bitmap {
       */
     }
 };
+
+#endif

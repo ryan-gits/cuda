@@ -1,4 +1,4 @@
-#include "isp.hpp"
+#include "isp.h"
 
 __global__
 void degamma(uint8_t *pSrc, uint8_t *pDst, int32_t imageSize) {
