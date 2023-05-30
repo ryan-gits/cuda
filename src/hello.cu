@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <cstdint>
 #include <fstream>
-#include "bitmap.h"
+#include "bitmap.hpp"
 #include "gamma.cu"
 #include "degamma.cu"
 #include "box_blur.cu"

@@ -27,7 +27,7 @@ void box_blur(uint8_t* pSrc, uint8_t* pDst, uint16_t kernelSize, int32_t imageSi
       rowMirrorOffset = -i - (row + i - imageSize + 1);
     // bottom row mirror pixels
     } else if (row + i < 0) {
-      rowMirrorOffset = -i - row + abs(row + i) ;
+      rowMirrorOffset = -i - row + abs(row + i) + 1;
     } else {
       rowMirrorOffset = 0;
     }
