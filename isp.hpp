@@ -1,3 +1,6 @@
+#ifndef ISP_HPP
+#define ISP_HPP
+
 #define COLORS_PER_PIXEL 3
 
 struct pixel {
@@ -5,3 +8,5 @@ struct pixel {
   uint32_t g;
   uint32_t b;
 };
+
+#endif
